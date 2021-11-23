@@ -16,6 +16,8 @@ import numpy as np
 import time
 from torch import einsum
 
+out_chans = 37
+
 #########################################
 class ConvBlock(nn.Module):
     def __init__(self, in_channel, out_channel, strides=1):
@@ -1135,7 +1137,7 @@ class CatCrossUformerLayer(nn.Module):
         return flops
 
 class Uformer(nn.Module):
-    def __init__(self, img_size=128, in_chans=3,
+    def __init__(self, img_size=128, in_chans=6,
                  embed_dim=32, depths=[2, 2, 2, 2, 2, 2, 2, 2, 2], num_heads=[1, 2, 4, 8, 16, 16, 8, 4, 2],
                  win_size=8, mlp_ratio=4., qkv_bias=True, qk_scale=None,
                  drop_rate=0., attn_drop_rate=0., drop_path_rate=0.1,
@@ -1164,7 +1166,7 @@ class Uformer(nn.Module):
 
         # Input/Output
         self.input_proj = InputProj(in_channel=in_chans, out_channel=embed_dim, kernel_size=3, stride=1, act_layer=nn.LeakyReLU)
-        self.output_proj = OutputProj(in_channel=2*embed_dim, out_channel=in_chans, kernel_size=3, stride=1)
+        self.output_proj = OutputProj(in_channel=2*embed_dim, out_channel=out_chans, kernel_size=3, stride=1)
         
         # Encoder
         self.encoderlayer_0 = BasicUformerLayer(dim=embed_dim,
@@ -1328,9 +1330,9 @@ class Uformer(nn.Module):
     def extra_repr(self) -> str:
         return f"embed_dim={self.embed_dim}, token_projection={self.token_projection}, token_mlp={self.mlp},win_size={self.win_size}"
 
-    def forward(self, x, mask=None):
+    def forward(self, x, x_bgr, mask=None):
         # Input Projection
-        y = self.input_proj(x)
+        y = self.input_proj(torch.cat([x, x_bgr], dim = 1))
         y = self.pos_drop(y)
         #Encoder
         conv0 = self.encoderlayer_0(y,mask=mask)
@@ -1364,7 +1366,7 @@ class Uformer(nn.Module):
 
         # Output Projection
         y = self.output_proj(deconv3)
-        return x + y
+        return y[:,:1,:,:], y[:,1:4,:,:], y[:,4:5,:,:], y[:,5:,:,:]
 
     def flops(self):
         flops = 0
@@ -1390,7 +1392,7 @@ class Uformer(nn.Module):
         return flops
 
 class Uformer_Cross(nn.Module):
-    def __init__(self, img_size=128, in_chans=3,
+    def __init__(self, img_size=128, in_chans=6,
                  embed_dim=32, depths=[2, 2, 2, 2, 2, 2, 2, 2, 2], num_heads=[1, 2, 4, 8, 16, 8, 4, 2, 1],
                  win_size=8, mlp_ratio=4., qkv_bias=True, qk_scale=None,
                  drop_rate=0., attn_drop_rate=0., drop_path_rate=0.1,
@@ -1419,7 +1421,7 @@ class Uformer_Cross(nn.Module):
 
         # Input/Output
         self.input_proj = InputProj(in_channel=in_chans, out_channel=embed_dim, kernel_size=3, stride=1, act_layer=nn.LeakyReLU)
-        self.output_proj = OutputProj(in_channel=embed_dim, out_channel=in_chans, kernel_size=3, stride=1)
+        self.output_proj = OutputProj(in_channel=embed_dim, out_channel=out_chans, kernel_size=3, stride=1)
         
         # Encoder
         self.encoderlayer_0 = BasicUformerLayer(dim=embed_dim,
@@ -1583,9 +1585,9 @@ class Uformer_Cross(nn.Module):
     def extra_repr(self) -> str:
         return f"embed_dim={self.embed_dim}, token_projection={self.token_projection}, token_mlp={self.mlp},win_size={self.win_size}"
 
-    def forward(self, x, mask=None):
+    def forward(self, x, x_bgr, mask=None):
         # Input Projection
-        y = self.input_proj(x)
+        y = self.input_proj(torch.cat([x, x_bgr], dim = 1))
         y = self.pos_drop(y)
 
         # Encoder
@@ -1616,7 +1618,7 @@ class Uformer_Cross(nn.Module):
 
         # Output Projection
         y = self.output_proj(deconv3)
-        return x + y
+        return y[:,:1,:,:], y[:,1:4,:,:], y[:,4:5,:,:], y[:,5:,:,:]
 
     def flops(self):
         flops = 0
@@ -1642,7 +1644,7 @@ class Uformer_Cross(nn.Module):
         return flops
         
 class Uformer_CatCross(nn.Module):
-    def __init__(self, img_size=128, in_chans=3,
+    def __init__(self, img_size=128, in_chans=6,
                  embed_dim=32, depths=[2, 2, 2, 2, 2, 2, 2, 2, 2], num_heads=[1, 2, 4, 8, 16, 8, 4, 2, 1],
                  win_size=8, mlp_ratio=4., qkv_bias=True, qk_scale=None,
                  drop_rate=0., attn_drop_rate=0., drop_path_rate=0.1,
@@ -1671,7 +1673,7 @@ class Uformer_CatCross(nn.Module):
 
         # Input/Output
         self.input_proj = InputProj(in_channel=in_chans, out_channel=embed_dim, kernel_size=3, stride=1, act_layer=nn.LeakyReLU)
-        self.output_proj = OutputProj(in_channel=embed_dim, out_channel=in_chans, kernel_size=3, stride=1)
+        self.output_proj = OutputProj(in_channel=embed_dim, out_channel=out_chans, kernel_size=3, stride=1)
         
         # Encoder
         self.encoderlayer_0 = BasicUformerLayer(dim=embed_dim,
@@ -1835,9 +1837,9 @@ class Uformer_CatCross(nn.Module):
     def extra_repr(self) -> str:
         return f"embed_dim={self.embed_dim}, token_projection={self.token_projection}, token_mlp={self.mlp},win_size={self.win_size}"
 
-    def forward(self, x, mask=None):
+    def forward(self, x, x_bgr, mask=None):
         # Input Projection
-        y = self.input_proj(x)
+        y = self.input_proj(torch.cat([x, x_bgr], dim = 1))
         y = self.pos_drop(y)
         # Encoder
         conv0 = self.encoderlayer_0(y, mask=mask)
@@ -1867,7 +1869,7 @@ class Uformer_CatCross(nn.Module):
 
         # Output Projection
         y = self.output_proj(deconv3)
-        return x + y
+        return y[:,:1,:,:], y[:,1:4,:,:], y[:,4:5,:,:], y[:,5:,:,:]
 
     def flops(self):
         flops = 0
@@ -1892,7 +1894,7 @@ class Uformer_CatCross(nn.Module):
         flops += self.output_proj.flops(self.reso,self.reso)
         return flops
 # class LeWinformer(nn.Module):
-#     def __init__(self, img_size=128, in_chans=3,
+#     def __init__(self, img_size=128, in_chans=6,
 #                  embed_dim=32, depth=12,
 #                  win_size=8, mlp_ratio=4., qkv_bias=True, qk_scale=None,
 #                  drop_rate=0., attn_drop_rate=0., drop_path_rate=0.1,
@@ -1918,7 +1920,7 @@ class Uformer_CatCross(nn.Module):
 
 #         # Input/Output
 #         self.input_proj = InputProj(in_channel=in_chans, out_channel=embed_dim, kernel_size=3, stride=1, act_layer=nn.LeakyReLU)
-#         self.output_proj = OutputProj(in_channel=embed_dim, out_channel=in_chans, kernel_size=3, stride=1)
+#         self.output_proj = OutputProj(in_channel=embed_dim, out_channel=out_chans, kernel_size=3, stride=1)
         
 #         # LeWin Transformer
 #         for i in range(depth):
@@ -1962,9 +1964,9 @@ class Uformer_CatCross(nn.Module):
 #     def extra_repr(self) -> str:
 #         return f"embed_dim={self.embed_dim}, token_projection={self.token_projection}, token_mlp={self.mlp},win_size={self.win_size}"
 
-#     def forward(self, x, mask=None):
+#     def forward(self, x, x_bgr, mask=None):
 #         # Input Projection
-#         y = self.input_proj(x)
+#         y = self.input_proj(torch.cat([x, x_bgr], dim = 1))
 #         y = self.pos_drop(y)
 #         #Encoder
 #         for lewin in self.transformer_layers:
@@ -1972,11 +1974,11 @@ class Uformer_CatCross(nn.Module):
 
 #         # Output Projection
 #         y = self.output_proj(y)
-#         return x + y
+#         return y[:,:1,:,:], y[:,1:4,:,:], y[:,4:5,:,:], y[:,5:,:,:]
 
 ### single-scale Uformer is computationally too costly.
 class Uformer_singlescale(nn.Module):
-    def __init__(self, img_size=128, in_chans=3,
+    def __init__(self, img_size=128, in_chans=6,
                  embed_dim=32, depths=[2, 2, 2, 2, 2, 2, 2, 2, 2], num_heads=[1, 2, 4, 8, 16, 16, 8, 4, 2],
                  win_size=8, mlp_ratio=4., qkv_bias=True, qk_scale=None,
                  drop_rate=0., attn_drop_rate=0., drop_path_rate=0.1,
@@ -2005,7 +2007,7 @@ class Uformer_singlescale(nn.Module):
 
         # Input/Output
         self.input_proj = InputProj(in_channel=in_chans, out_channel=embed_dim, kernel_size=3, stride=1, act_layer=nn.LeakyReLU)
-        self.output_proj = OutputProj(in_channel=2*embed_dim, out_channel=in_chans, kernel_size=3, stride=1)
+        self.output_proj = OutputProj(in_channel=2*embed_dim, out_channel=out_chans, kernel_size=3, stride=1)
         
         # Encoder
         self.encoderlayer_0 = BasicUformerLayer(dim=embed_dim,
@@ -2169,9 +2171,9 @@ class Uformer_singlescale(nn.Module):
     def extra_repr(self) -> str:
         return f"embed_dim={self.embed_dim}, token_projection={self.token_projection}, token_mlp={self.mlp},win_size={self.win_size}"
 
-    def forward(self, x, mask=None):
+    def forward(self, x, x_bgr, mask=None):
         # Input Projection
-        y = self.input_proj(x)
+        y = self.input_proj(torch.cat([x, x_bgr], dim = 1))
         y = self.pos_drop(y)
         #Encoder
         conv0 = self.encoderlayer_0(y,mask=mask)
@@ -2205,7 +2207,7 @@ class Uformer_singlescale(nn.Module):
 
         # Output Projection
         y = self.output_proj(deconv3)
-        return x + y
+        return y[:,:1,:,:], y[:,1:4,:,:], y[:,4:5,:,:], y[:,5:,:,:]
 
 if __name__ == "__main__":
     arch = Uformer
